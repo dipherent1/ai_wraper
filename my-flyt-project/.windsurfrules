@@ -1,0 +1,184 @@
+# Windsurf Rules for Flyt Project
+
+## Flyt Framework Overview
+Flyt is a zero-dependency Go workflow framework for building LLM applications. It uses a directed graph model where nodes perform tasks and flows orchestrate execution paths.
+
+## Build & Test
+- Run: `go run .` with `-mode agent` or `-mode batch`
+- Test single: `go test -run ^TestName$ ./...`
+- Test package: `go test ./package/...`
+- Format: `go fmt ./...`
+- Lint: `go vet ./...`
+- Dependencies: `go mod tidy`
+
+## Node Development
+
+### Basic Node Structure
+```go
+func CreateTaskNode() flyt.Node {
+    return flyt.NewNode(
+        // PrepFunc: Load data from SharedStore (optional)
+        flyt.WithPrepFunc(func(ctx context.Context, shared *flyt.SharedStore) (any, error) {
+            // Validate and prepare input
+            input, ok := shared.Get("input")
+            if !ok {
+                return nil, fmt.Errorf("missing required input")
+            }
+            return input, nil
+        }),
+        
+        // ExecFunc: Core logic (required)
+        flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
+            // Main processing happens here
+            // Check context for cancellation
+            select {
+            case <-ctx.Done():
+                return nil, ctx.Err()
+            default:
+                // Process data
+                return processData(prepResult), nil
+            }
+        }),
+        
+        // PostFunc: Store results and routing (optional)
+        flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {
+            // Save results
+            shared.Set("result", execResult)
+            
+            // Determine next action
+            if needsRetry(execResult) {
+                return "retry", nil
+            }
+            return flyt.DefaultAction, nil
+        }),
+        
+        // Configuration options
+        flyt.WithMaxRetries(3),
+        flyt.WithRetryDelay(time.Second),
+    )
+}
+```
+
+### Flow Composition
+```go
+// Simple sequential flow
+flow := flyt.NewFlow(startNode)
+flow.Connect(startNode, flyt.DefaultAction, middleNode)
+flow.Connect(middleNode, flyt.DefaultAction, endNode)
+
+// Conditional branching
+flow := flyt.NewFlow(routerNode)
+flow.Connect(routerNode, "process", processNode)
+flow.Connect(routerNode, "skip", skipNode)
+flow.Connect(routerNode, "error", errorNode)
+
+// Merge paths
+flow.Connect(processNode, flyt.DefaultAction, mergeNode)
+flow.Connect(skipNode, flyt.DefaultAction, mergeNode)
+```
+
+### SharedStore Best Practices
+```go
+// Type-safe keys
+const (
+    KeyUserInput = "userInput"
+    KeyContext   = "context"
+    KeyResults   = "results"
+)
+
+// Store complex types
+type Result struct {
+    Data  string
+    Score float64
+}
+shared.Set(KeyResults, Result{Data: "processed", Score: 0.95})
+
+// Retrieve with type assertion
+if val, ok := shared.Get(KeyResults); ok {
+    result := val.(Result)
+    // Use result
+}
+```
+
+## Code Standards
+- Package documentation required
+- Import grouping: stdlib → github.com/mark3labs/flyt → internal
+- Error messages: lowercase, no punctuation
+- Node names: descriptive verbs (CreateAnalyzeNode, CreateSearchNode)
+- Action names: clear intent ("retry", "skip", "process")
+
+## Common Patterns
+
+### LLM Integration
+```go
+func CreateLLMNode() flyt.Node {
+    return flyt.NewNode(
+        flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
+            prompt := prepResult.(string)
+            response, err := utils.CallOpenAI(ctx, prompt)
+            if err != nil {
+                return nil, fmt.Errorf("LLM call failed: %w", err)
+            }
+            return response, nil
+        }),
+        flyt.WithMaxRetries(2), // LLM calls can fail
+    )
+}
+```
+
+### Batch Processing
+```go
+func CreateBatchNode() flyt.Node {
+    return flyt.NewBatchNode(
+        flyt.WithBatchSize(10),
+        flyt.WithBatchExecFunc(func(ctx context.Context, items []any) ([]any, error) {
+            // Process items concurrently
+            results := make([]any, len(items))
+            // ... parallel processing logic
+            return results, nil
+        }),
+    )
+}
+```
+
+### Error Recovery
+```go
+flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {
+    if err, ok := execResult.(error); ok {
+        // Log error
+        shared.Set("lastError", err.Error())
+        
+        // Decide recovery action
+        if isRetryable(err) {
+            return "retry", nil
+        }
+        return "fallback", nil
+    }
+    return flyt.DefaultAction, nil
+})
+```
+
+## Project Structure
+```
+flyt-project-template/
+├── main.go          # CLI entry, mode handling
+├── nodes.go         # Node implementations
+├── flow.go          # Flow definitions
+├── utils/
+│   ├── llm.go      # OpenAI client wrapper
+│   ├── search.go   # Web search integration
+│   └── text.go     # Text processing utilities
+└── docs/           # Additional documentation
+```
+
+## Environment & Configuration
+- `GEMINI_API_KEY`: Required for LLM features
+- Modes:
+  - `agent`: Interactive Q&A with user
+  - `batch`: Process multiple items from file/input
+
+## Testing Strategy
+- Unit test individual nodes with mock SharedStore
+- Integration test complete flows
+- Test error paths and retries
+- Verify context cancellation handling

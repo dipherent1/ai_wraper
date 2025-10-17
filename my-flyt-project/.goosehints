@@ -1,0 +1,111 @@
+# Goose AI Hints for Flyt Project
+
+## What is Flyt?
+Flyt is a Go workflow framework for LLM apps. Think of it as a graph where nodes do work and edges (actions) control flow.
+
+## Commands
+go run . [-mode agent|batch]  # Run application
+go test -run ^TestName$ ./... # Run single test
+go test ./...                 # Run all tests
+go fmt ./... && go vet ./...  # Format and lint
+go mod tidy                   # Clean dependencies
+
+## Node Anatomy
+```go
+func CreateSmartNode() flyt.Node {
+    return flyt.NewNode(
+        // Optional: Prep data from SharedStore
+        flyt.WithPrepFunc(func(ctx context.Context, shared *flyt.SharedStore) (any, error) {
+            data, ok := shared.Get("input")
+            if !ok {
+                return nil, fmt.Errorf("no input")
+            }
+            return data, nil
+        }),
+        
+        // Required: Do the actual work
+        flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
+            // Process prepResult
+            return processedData, nil
+        }),
+        
+        // Optional: Store results, decide routing
+        flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {
+            shared.Set("output", execResult)
+            if shouldContinue(execResult) {
+                return "continue", nil  // Custom action
+            }
+            return flyt.DefaultAction, nil
+        }),
+        
+        // Optional: Retry configuration
+        flyt.WithMaxRetries(3),
+    )
+}
+```
+
+## Flow Patterns
+```go
+// Linear flow
+flow := flyt.NewFlow(node1)
+flow.Connect(node1, flyt.DefaultAction, node2)
+flow.Connect(node2, flyt.DefaultAction, node3)
+
+// Branching flow
+flow := flyt.NewFlow(deciderNode)
+flow.Connect(deciderNode, "pathA", nodeA)
+flow.Connect(deciderNode, "pathB", nodeB)
+flow.Connect(nodeA, flyt.DefaultAction, finalNode)
+flow.Connect(nodeB, flyt.DefaultAction, finalNode)
+
+// Loop flow
+flow := flyt.NewFlow(checkNode)
+flow.Connect(checkNode, "retry", processNode)
+flow.Connect(processNode, flyt.DefaultAction, checkNode)
+flow.Connect(checkNode, "done", exitNode)
+```
+
+## SharedStore Usage
+```go
+// Write any type
+shared.Set("question", "What is Flyt?")
+shared.Set("tokens", 1500)
+shared.Set("results", []string{"a", "b"})
+
+// Read with existence check
+if val, ok := shared.Get("question"); ok {
+    question := val.(string)
+}
+
+// Read with type assertion
+tokens, _ := shared.Get("tokens").(int)
+```
+
+## Common Node Types
+1. **Input nodes**: Get data (user input, file read)
+2. **Processing nodes**: Transform data (LLM calls, parsing)
+3. **Decision nodes**: Route based on conditions
+4. **Output nodes**: Display or save results
+5. **Batch nodes**: Process multiple items in parallel
+
+## Error Handling
+- Always check errors from shared.Get()
+- Use fmt.Errorf() for context
+- Implement retries for external calls
+- Respect context cancellation
+
+## Project Structure
+main.go      # Entry point, CLI handling
+nodes.go     # All node implementations
+flow.go      # Flow definitions
+utils/
+  llm.go     # OpenAI integration
+  search.go  # Web search
+  text.go    # Text utilities
+
+## Quick Tips
+- One node = one responsibility
+- Use actions for flow control
+- SharedStore is your data bus
+- Context cancellation is sacred
+- Test nodes in isolation

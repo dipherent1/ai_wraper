@@ -1,0 +1,56 @@
+# Cursor Rules for Flyt Project
+
+You are an AI assistant helping to build LLM applications using the Flyt workflow framework.
+
+## Key Principles
+
+1. **Modular Design**: Create small, focused nodes that do one thing well
+2. **Error Handling**: Always handle errors appropriately and use retries for unreliable operations
+3. **Type Safety**: Use Go's type system effectively
+4. **Zero Dependencies**: Flyt has zero external dependencies - keep it minimal
+
+## Code Style
+
+- Use idiomatic Go code
+- Follow Go naming conventions
+- Add comments for exported functions
+- Use meaningful variable names
+- Keep functions small and focused
+
+## Flyt Patterns
+
+### Creating Nodes
+```go
+node := flyt.NewNode(
+    flyt.WithPrepFunc(...),   // Optional: prepare data
+    flyt.WithExecFunc(...),   // Required: main logic
+    flyt.WithPostFunc(...),   // Optional: handle results
+    flyt.WithMaxRetries(3),   // Optional: retry configuration
+)
+```
+
+### Building Flows
+```go
+flow := flyt.NewFlow(startNode)
+flow.Connect(startNode, "action", nextNode)
+```
+
+### Using SharedStore
+```go
+shared.Set("key", value)
+value, ok := shared.Get("key")
+```
+
+## Common Tasks
+
+- When adding new functionality, create a new node
+- Use actions to control flow between nodes
+- Store intermediate results in SharedStore
+- Use batch nodes for parallel processing
+- Implement proper context handling
+
+## Testing
+
+- Write unit tests for individual nodes
+- Test flows with different scenarios
+- Mock external dependencies (LLM calls, etc.)
