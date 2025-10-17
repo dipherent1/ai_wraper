@@ -1,1 +1,4 @@
 .env
+./build_files/
+./.vscode
+**/build_files/
