@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"flyt-project-template/utils"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 
@@ -100,6 +104,7 @@ func CreateAnswerNode() flyt.Node {
 			data := prepResult.(map[string]any)
 			question := data["question"].(string)
 			history := data["history"].([]Conversation)
+			context := data["context"].(string)
 
 			// Get API key from environment
 			apiKey := os.Getenv("GEMINI_API_KEY")
@@ -109,14 +114,14 @@ func CreateAnswerNode() flyt.Node {
 
 			// Call LLM to get the answer
 			// Build prompt including a short serialized history if present
-			prompt := fmt.Sprintf("Answer this question: %s", question)
+			prompt := fmt.Sprintf("Context: %s\nAnswer this question: %s", context, question)
 			if len(history) > 0 {
 				// Serialize recent history entries into a simple text block
 				var b strings.Builder
 				for i, c := range history {
 					b.WriteString(fmt.Sprintf("%d. User: %s\n   AI: %v\n", i+1, c.User, c.AI))
 				}
-				prompt = fmt.Sprintf("Context:\n%s\nAnswer this question: %s", b.String(), question)
+				prompt = fmt.Sprintf("Context: %s\nHistory:\n%s\nAnswer this question: %s", context, b.String(), question)
 			}
 
 			// Call LLM helper in utils
@@ -181,6 +186,7 @@ func CreateAnalyzeNode() flyt.Node {
 }
 
 // CreateSearchNode creates a node that performs web search
+// CreateSearchNode creates a node that performs a real web search using Tavily AI
 func CreateSearchNode() flyt.Node {
 	return flyt.NewNode(
 		flyt.WithPrepFunc(func(ctx context.Context, shared *flyt.SharedStore) (any, error) {
@@ -188,24 +194,78 @@ func CreateSearchNode() flyt.Node {
 			if !ok {
 				return nil, fmt.Errorf("no question found in shared store")
 			}
-			return question, nil
+			apiKey := os.Getenv("TAVILY_API_KEY")
+			if apiKey == "" {
+				return nil, fmt.Errorf("TAVILY_API_KEY environment variable not set")
+			}
+
+			fmt.Println("Using Tavily API Key:", apiKey)
+			return map[string]string{
+				"question": question.(string),
+				"apiKey":   apiKey,
+			}, nil
 		}),
 		flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
-			if prepResult == nil {
-				return nil, fmt.Errorf("no question to search for")
+			data := prepResult.(map[string]string)
+			question := data["question"]
+			apiKey := data["apiKey"]
+
+			fmt.Println("🔎 Performing web search...")
+
+			// 1. Prepare the request body for Tavily API
+			requestBody, err := json.Marshal(map[string]interface{}{
+				"api_key":      apiKey,
+				"query":        question,
+				"search_depth": "basic",
+				"max_results":  3, // Get top 3 results
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal search request: %w", err)
 			}
-			question := prepResult.(string)
 
-			// TODO: Implement actual web search
-			// For now, return mock results
-			results := fmt.Sprintf("Mock search results for: %s", question)
+			// 2. Make the HTTP POST request
+			resp, err := http.Post("https://api.tavily.com/search", "application/json", bytes.NewBuffer(requestBody))
+			if err != nil {
+				return nil, fmt.Errorf("failed to make search request: %w", err)
+			}
+			defer resp.Body.Close()
 
-			return results, nil
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read search response: %w", err)
+			}
+			if resp.StatusCode != http.StatusOK {
+				return nil, fmt.Errorf("search API request failed with status %d: %s", resp.StatusCode, string(body))
+			}
+
+			// 3. Parse the JSON response
+			var searchResponse struct {
+				Results []struct {
+					Title   string `json:"title"`
+					URL     string `json:"url"`
+					Content string `json:"content"`
+				} `json:"results"`
+			}
+			if err := json.Unmarshal(body, &searchResponse); err != nil {
+				return nil, fmt.Errorf("failed to parse search response: %w", err)
+			}
+
+			if len(searchResponse.Results) == 0 {
+				return "No relevant search results found.", nil
+			}
+
+			// 4. Format results into a single string for the next LLM call
+			var resultsBuilder strings.Builder
+			resultsBuilder.WriteString("Web search results:\n\n")
+			for i, result := range searchResponse.Results {
+				resultsBuilder.WriteString(fmt.Sprintf("Source %d: %s (%s)\nContent: %s\n\n", i+1, result.Title, result.URL, result.Content))
+			}
+
+			return resultsBuilder.String(), nil
 		}),
 		flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {
 			shared.Set("search_results", execResult)
-
-			// Go back to analyze to decide what to do with results
+			// Now that we have results, go back to the analyze node to decide the next step
 			return "analyze", nil
 		}),
 	)
@@ -225,16 +285,33 @@ func CreateProcessNode() flyt.Node {
 		}),
 		flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
 			data := prepResult.(map[string]any)
+			// question := data["question"].(string)
+			searchResults := data["search_results"].(string)
+
+			// Build prompt to process search results
+			// prompt := fmt.Sprintf("Using the following search results, provide a detailed answer to the question: %s\n\nSearch Results:\n%s", question, searchResults)
+
+			// Call LLM helper in utils
+			// response, err := utils.CallLLM(prompt)
+			// if err != nil {
+			// 	return nil, err
+			// }
 
 			// Process the search results
 			// In a real implementation, this could extract key information,
 			// summarize, or transform the data
-			_ = data // Will be used when processing is implemented
-			processed := "Processed information from search results"
+			// _ = data // Will be used when processing is implemented
+			// processed := "Processed information from search results"
+			return searchResults, nil
 
-			return processed, nil
 		}), flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {
 			shared.Set("context", execResult)
+			// q, _ := shared.Get("question")
+			// conv := Conversation{User: q.(string), AI: execResult}
+
+			// h := getHistory(shared)
+			// h.Conversations = append(h.Conversations, conv)
+			// saveHistory(shared, h)
 			return flyt.DefaultAction, nil
 		}),
 	)
