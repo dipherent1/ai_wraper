@@ -27,8 +27,13 @@ func DefaultLLMConfig() *LLMConfig {
 }
 
 // CallLLM calls the Gemini API with the given prompt
-func CallLLM(prompt string) (string, error) {
-	return CallLLMWithConfig(prompt, DefaultLLMConfig())
+func CallLLM(prompt string, model string) (string, error) {
+	if model == "" {
+		model = "gemini-2.5-pro"
+	}
+	cfg := DefaultLLMConfig()
+	cfg.Model = model
+	return CallLLMWithConfig(prompt, cfg)
 }
 
 // CallLLMWithConfig calls the Gemini API with custom configuration
@@ -121,7 +126,7 @@ func CallLLMWithConfig(prompt string, config *LLMConfig) (string, error) {
 func CallLLMStreaming(prompt string, onChunk func(string) error) error {
 	// Implementation would handle streaming responses (e.g., using server-sent events)
 	// For now, we'll use the regular call as in the original code
-	response, err := CallLLM(prompt)
+	response, err := CallLLM(prompt, "")
 	if err != nil {
 		return err
 	}

@@ -69,7 +69,7 @@ func CreateAnswerNode() flyt.Node {
 			// TODO: Implement CallLLM function in utils/llm.go
 			_ = prompt // Will be used when CallLLM is implemented
 
-			response, err := utils.CallLLM(prompt)
+			response, err := utils.CallLLM(prompt, "")
 			if err != nil {
 				return nil, err
 			}
@@ -107,6 +107,10 @@ func CreateAnalyzeNode() flyt.Node {
 				// No search results yet, might need to search
 				return "search", nil
 			}
+			// prompt := fmt.Sprintf("Answer this question: %s", question)
+			// if data["context"] != nil {
+			// 	prompt = fmt.Sprintf("Context: %s\n\nAnswer this question: %s", data["context"], question)
+			// }
 
 			// We have search results, process them
 			return "process", nil
