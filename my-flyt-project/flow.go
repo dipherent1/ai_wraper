@@ -7,12 +7,12 @@ import (
 // CreateQAFlow creates a question-answering flow
 func CreateQAFlow() *flyt.Flow {
 	// Create nodes
-	getQuestionNode := CreateGetQuestionNode()
+	// getQuestionNode := CreateGetQuestionNode()
 	answerNode := CreateAnswerNode()
 
 	// Connect nodes in sequence
-	flow := flyt.NewFlow(getQuestionNode)
-	flow.Connect(getQuestionNode, flyt.DefaultAction, answerNode)
+	flow := flyt.NewFlow(answerNode)
+	// flow.Connect(getQuestionNode, flyt.DefaultAction, answerNode)
 
 	return flow
 }

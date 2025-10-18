@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"flyt-project-template/utils"
 	"fmt"
@@ -11,26 +10,73 @@ import (
 	"github.com/mark3labs/flyt"
 )
 
-// CreateGetQuestionNode creates a node that gets a question from user input
-func CreateGetQuestionNode() flyt.Node {
-	return flyt.NewNode(
-		flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
-			// Get question from user input
-			reader := bufio.NewReader(os.Stdin)
-			fmt.Print("Enter your question: ")
-			userQuestion, err := reader.ReadString('\n')
-			if err != nil {
-				return nil, err
-			}
-			return strings.TrimSpace(userQuestion), nil
-		}),
-		flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {
-			// Store the user's question
-			shared.Set("question", execResult)
-			return flyt.DefaultAction, nil
-		}),
-	)
+// make a struct of user and ai conversation
+type Conversation struct {
+	User string
+	AI   any
 }
+
+type History struct {
+	Conversations []Conversation
+}
+
+// getHistory reads history from shared store and normalizes it to History.
+func getHistory(shared *flyt.SharedStore) History {
+	raw, _ := shared.Get("history")
+	switch v := raw.(type) {
+	case History:
+		return v
+	case []Conversation:
+		return History{Conversations: v}
+	case nil:
+		return History{}
+	default:
+		// Best-effort conversion from []interface{} with map[string]interface{}
+		if s, ok := raw.([]interface{}); ok {
+			convs := make([]Conversation, 0, len(s))
+			for _, it := range s {
+				if m, ok := it.(map[string]interface{}); ok {
+					var c Conversation
+					if user, ok := m["User"].(string); ok {
+						c.User = user
+					}
+					if ai, ok := m["AI"]; ok {
+						c.AI = ai
+					}
+					convs = append(convs, c)
+				}
+			}
+			return History{Conversations: convs}
+		}
+		return History{}
+	}
+}
+
+// saveHistory writes the History back into the shared store.
+func saveHistory(shared *flyt.SharedStore, h History) {
+	shared.Set("history", h)
+}
+
+// CreateGetQuestionNode creates a node that gets a question from user input
+// func CreateGetQuestionNode() flyt.Node {
+// 	return flyt.NewNode(
+// 		flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
+// 			// Get question from user input
+// 			reader := bufio.NewReader(os.Stdin)
+// 			fmt.Print("Enter your question: ")
+// 			userQuestion, err := reader.ReadString('\n')
+// 			if err != nil {
+// 				return nil, err
+// 			}
+// 			return strings.TrimSpace(userQuestion), nil
+// 		}),
+// 		flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {
+// 			// Store the user's question
+// 			shared.Set("question", execResult)
+// 			return flyt.DefaultAction, nil
+// 		}),
+// 	)
+// }
 
 // CreateAnswerNode creates a node that generates an answer using LLM
 func CreateAnswerNode() flyt.Node {
@@ -42,17 +88,18 @@ func CreateAnswerNode() flyt.Node {
 				return nil, fmt.Errorf("no question found in shared store")
 			}
 
-			// Get any additional context
-			context, _ := shared.Get("context")
+			// Use helper to normalize history
+			h := getHistory(shared)
 
 			return map[string]any{
 				"question": question,
-				"context":  context,
+				"history":  h.Conversations,
 			}, nil
 		}),
 		flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
 			data := prepResult.(map[string]any)
 			question := data["question"].(string)
+			history := data["history"].([]Conversation)
 
 			// Get API key from environment
 			apiKey := os.Getenv("GEMINI_API_KEY")
@@ -61,24 +108,35 @@ func CreateAnswerNode() flyt.Node {
 			}
 
 			// Call LLM to get the answer
+			// Build prompt including a short serialized history if present
 			prompt := fmt.Sprintf("Answer this question: %s", question)
-			if data["context"] != nil {
-				prompt = fmt.Sprintf("Context: %s\n\nAnswer this question: %s", data["context"], question)
+			if len(history) > 0 {
+				// Serialize recent history entries into a simple text block
+				var b strings.Builder
+				for i, c := range history {
+					b.WriteString(fmt.Sprintf("%d. User: %s\n   AI: %v\n", i+1, c.User, c.AI))
+				}
+				prompt = fmt.Sprintf("Context:\n%s\nAnswer this question: %s", b.String(), question)
 			}
 
-			// TODO: Implement CallLLM function in utils/llm.go
-			_ = prompt // Will be used when CallLLM is implemented
-
+			// Call LLM helper in utils
 			response, err := utils.CallLLM(prompt, "")
 			if err != nil {
 				return nil, err
 			}
 
-			return fmt.Sprintf(response), nil
+			return response, nil
 		}),
 		flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {
-			// Store the answer in shared store
+			// Store the answer and append to history using helpers
 			shared.Set("answer", execResult)
+			q, _ := shared.Get("question")
+			conv := Conversation{User: q.(string), AI: execResult}
+
+			h := getHistory(shared)
+			h.Conversations = append(h.Conversations, conv)
+			saveHistory(shared, h)
+
 			return flyt.DefaultAction, nil
 		}),
 	)
@@ -172,7 +230,7 @@ func CreateProcessNode() flyt.Node {
 			// In a real implementation, this could extract key information,
 			// summarize, or transform the data
 			_ = data // Will be used when processing is implemented
-			processed := fmt.Sprintf("Processed information from search results")
+			processed := "Processed information from search results"
 
 			return processed, nil
 		}), flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {

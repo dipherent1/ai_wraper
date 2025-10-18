@@ -32,6 +32,9 @@ func main() {
 
 	// Create shared store
 	shared := flyt.NewSharedStore()
+	var history History
+	// Store the full History struct (not just the slice) for easier retrieval
+	shared.Set("history", history)
 
 	// Create context
 	ctx := context.Background()
@@ -48,22 +51,6 @@ func main() {
 		fmt.Println("🤖 Starting Agent Flow...")
 		flow = CreateAgentFlow()
 		// For agent mode, we need to set an initial question
-		if flag.NArg() > 0 {
-			shared.Set("question", flag.Arg(0))
-		} else {
-			// Prompt for question if not provided
-			reader := bufio.NewReader(os.Stdin)
-			fmt.Print("Enter your question: ")
-			question, err := reader.ReadString('\n')
-			if err != nil {
-				log.Fatalf("Failed to read input: %v", err)
-			}
-			question = strings.TrimSpace(question)
-			if question == "" {
-				question = "What is the capital of France?"
-			}
-			shared.Set("question", question)
-		}
 
 	case "batch":
 		fmt.Println("🤖 Starting Batch Processing Flow...")
@@ -79,29 +66,45 @@ func main() {
 		// In a real implementation, you might configure logging here
 	}
 
-	// Run the flow
-	fmt.Println("🚀 Running flow...")
-	err = flow.Run(ctx, shared)
-	if err != nil {
-		log.Fatalf("❌ Flow failed: %v", err)
-	}
+	reader := bufio.NewReader(os.Stdin)
+	for {
 
-	// Display results based on mode
-	switch *mode {
-	case "qa", "agent":
+		// Prompt for question if not provided
+		fmt.Print("Enter your question: ")
+		question, err := reader.ReadString('\n')
+		if err != nil {
+			log.Fatalf("Failed to read input: %v", err)
+		}
+		question = strings.TrimSpace(question)
+		if question == "" {
+			question = "What is the capital of France?"
+		}
+		shared.Set("question", question)
+
+		fmt.Println("🚀 Running flow...")
+		err = flow.Run(ctx, shared)
+		if err != nil {
+			log.Fatalf("❌ Flow failed: %v", err)
+		}
+
+		fmt.Println("\n🎉 Flow completed successfully!")
 		if answer, ok := shared.Get("answer"); ok {
 			fmt.Println("\n✅ Answer:")
 			fmt.Println(answer)
 		}
-
-	case "batch":
-		if results, ok := shared.Get("final_results"); ok {
-			fmt.Println("\n✅ Batch Processing Complete:")
-			fmt.Println(results)
-		}
 	}
 
-	fmt.Println("\n🎉 Flow completed successfully!")
+	// Run the flow
+
+	// Display results based on mode
+	// switch *mode {
+	// case "qa", "agent":
+
+	// case "batch":
+	// 	if results, ok := shared.Get("final_results"); ok {
+	// 		fmt.Println("\n✅ Batch Processing Complete:")
+	// 		fmt.Println(results)
+	// 	}
 }
 
 // Example of how to run the application:
