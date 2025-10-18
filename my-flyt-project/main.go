@@ -9,10 +9,15 @@ import (
 	"os"
 	"strings"
 
+	"github.com/joho/godotenv"
 	"github.com/mark3labs/flyt"
 )
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatalf("Error loading .env file: %v", err)
+	}
 	// Define command line flags
 	var (
 		mode    = flag.String("mode", "qa", "Flow mode: qa, agent, or batch")
@@ -33,7 +38,6 @@ func main() {
 
 	// Select and run the appropriate flow
 	var flow *flyt.Flow
-	var err error
 
 	switch *mode {
 	case "qa":

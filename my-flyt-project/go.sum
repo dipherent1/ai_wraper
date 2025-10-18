@@ -1,2 +1,4 @@
+github.com/joho/godotenv v1.5.1 h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=
+github.com/joho/godotenv v1.5.1/go.mod h1:f4LDr5Voq0i2e/R5DDNOoa2zzDfwtkZa6DnEwAbqwq4=
 github.com/mark3labs/flyt v0.4.1 h1:GAJoZTQ84UnC5S5l/OQuNjqh3JQsxRWxHOooF/8j0wU=
 github.com/mark3labs/flyt v0.4.1/go.mod h1:dl3/OwMP2DS7KoTob/iQooPOtt8leGAEAdHy4ABCF1Y=
