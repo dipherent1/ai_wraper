@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -19,21 +20,28 @@ type LLMConfig struct {
 
 // DefaultLLMConfig returns default configuration for Gemini
 func DefaultLLMConfig() *LLMConfig {
+
+	// Use package-level DefaultModel if set, otherwise fallback to a sane default
+	model := DefaultModel
+	if model == "" {
+		model = "gemini-2.5-flash"
+	}
+	log.Printf("Using LLM model: %s", model)
+
 	return &LLMConfig{
-		Model:       "gemini-2.5-pro", // Updated to a standard Gemini model
+		Model:       model,
 		Temperature: 0.7,
 		MaxTokens:   0, // Use model default
 	}
 }
 
+// DefaultModel is the package-level model name used when creating default configs.
+// It can be set by the application (for example in `main.go`) after parsing flags.
+var DefaultModel string
+
 // CallLLM calls the Gemini API with the given prompt
-func CallLLM(prompt string, model string) (string, error) {
-	if model == "" {
-		model = "gemini-2.5-pro"
-	}
-	cfg := DefaultLLMConfig()
-	cfg.Model = model
-	return CallLLMWithConfig(prompt, cfg)
+func CallLLM(prompt string) (string, error) {
+	return CallLLMWithConfig(prompt, DefaultLLMConfig())
 }
 
 // CallLLMWithConfig calls the Gemini API with custom configuration
@@ -126,7 +134,7 @@ func CallLLMWithConfig(prompt string, config *LLMConfig) (string, error) {
 func CallLLMStreaming(prompt string, onChunk func(string) error) error {
 	// Implementation would handle streaming responses (e.g., using server-sent events)
 	// For now, we'll use the regular call as in the original code
-	response, err := CallLLM(prompt, "")
+	response, err := CallLLM(prompt)
 	if err != nil {
 		return err
 	}

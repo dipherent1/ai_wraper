@@ -120,7 +120,7 @@ func CreateAnswerNode() flyt.Node {
 			}
 
 			// Call LLM helper in utils
-			response, err := utils.CallLLM(prompt, "")
+			response, err := utils.CallLLM(prompt)
 			if err != nil {
 				return nil, err
 			}

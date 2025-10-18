@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 
+	"flyt-project-template/utils"
+
 	"github.com/joho/godotenv"
 	"github.com/mark3labs/flyt"
 )
@@ -22,8 +24,12 @@ func main() {
 	var (
 		mode    = flag.String("mode", "qa", "Flow mode: qa, agent, or batch")
 		verbose = flag.Bool("v", false, "Enable verbose output")
+		model   = flag.String("model", "gemini-2.5-flash", "LLM model to use")
 	)
+	// Parse flags first, then set package-level default model in utils so other packages use the selected model
 	flag.Parse()
+	utils.DefaultModel = *model
+	log.Printf("Setting default LLM model to: %s", utils.DefaultModel)
 
 	// Check for required environment variables
 	if os.Getenv("GEMINI_API_KEY") == "" {
