@@ -50,9 +50,10 @@ func main() {
 	}
 	// Define command line flags
 	var (
-		mode    = flag.String("mode", "qa", "Flow mode: qa, agent, or batch")
-		verbose = flag.Bool("v", false, "Enable verbose output")
-		model   = flag.String("model", "gemini-2.5-flash", "LLM model to use")
+		mode          = flag.String("mode", "qa", "Flow mode: qa, agent, or batch")
+		verbose       = flag.Bool("v", false, "Enable verbose output")
+		model         = flag.String("model", "gemini-2.5-flash", "LLM model to use")
+		imagePathsStr = flag.String("images", "", "Comma-separated list of image paths")
 	)
 	// Parse flags first, then set package-level default model in utils so other packages use the selected model
 	flag.Parse()
@@ -70,7 +71,13 @@ func main() {
 	// Store the full History struct (not just the slice) for easier retrieval
 	shared.Set("history", history)
 	shared.Set("context", " you are a helpful assistant. ")
-	shared.Set("image_paths", []string{}) // Initialize with a sample image path
+	var initialImagePaths []string
+	if *imagePathsStr != "" {
+		// Split the comma-separated string into a slice of paths
+		initialImagePaths = strings.Split(*imagePathsStr, ",")
+		fmt.Printf("🖼️ Loaded %d image(s) from command line.\n", len(initialImagePaths))
+	}
+	shared.Set("image_paths", initialImagePaths) // Set it once at the start
 
 	// Create context
 	ctx := context.Background()
