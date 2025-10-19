@@ -28,7 +28,6 @@ flyt-project-template/
 ```
 
 ## Quick Start
-
 ### Prerequisites
 
 - Go 1.21 or later
@@ -116,114 +115,176 @@ answerNode := CreateAnswerNode(apiKey)
 
 // Connect nodes
 flow := flyt.NewFlow(questionNode)
-flow.Connect(questionNode, flyt.DefaultAction, answerNode)
+## my-flyt-project — Flyt LLM workflow starter
 
-// Run flow
-shared := flyt.NewSharedStore()
-err := flow.Run(context.Background(), shared)
+A minimalist Go template that demonstrates building LLM-powered workflows using the Flyt graph-based workflow pattern.
+
+This repository contains a small example app that wires together modular "nodes" (prep/exec/post phases) and a lightweight `utils/llm.go` helper to call the Google Gemini API (the code is also easy to adapt for other providers).
+
+Highlights
+
+- Flow-based architecture using reusable nodes
+- LLM utilities supporting text, search-enabled calls, images, and streaming helper
+- Small, dependency-light Go app intended as a starting point for experiments and integrations
+
+## Quick start
+
+Prerequisites
+
+- Go 1.21 or later
+- A Gemini API key set in the `GEMINI_API_KEY` environment variable (see "Configuration" below)
+
+Clone and prepare
+
+```bash
+git clone <your-repo-url>
+cd my-flyt-project
+go mod tidy
 ```
 
-### Agent with Decision Making
+Build
 
-```go
-// Create nodes with conditional routing
-decideNode := CreateDecisionNode()
-searchNode := CreateSearchNode()
-answerNode := CreateAnswerNode()
-
-// Build flow with branching
-flow := flyt.NewFlow(decideNode)
-flow.Connect(decideNode, "search", searchNode)
-flow.Connect(decideNode, "answer", answerNode)
-flow.Connect(searchNode, "decide", decideNode) // Loop back
+```bash
+go build -o build_files/ai-query
 ```
 
-## Advanced Features
+Run
 
-### Batch Processing
+```bash
+# set API key (example)
+export GEMINI_API_KEY="your-api-key-here"
 
-Process multiple items concurrently:
-
-```go
-processFunc := func(ctx context.Context, item any) (any, error) {
-    // Process each item
-    return processItem(item), nil
-}
-
-batchNode := flyt.NewBatchNode(processFunc, true) // true for concurrent
+# run the binary
+./build_files/ai-query
 ```
 
-### Error Handling & Retries
+You can also run in-place during development:
 
-Add retry logic to handle transient failures:
-
-```go
-node := flyt.NewNode(
-    flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
-        return callFlakeyAPI()
-    }),
-    flyt.WithMaxRetries(3),
-    flyt.WithWait(time.Second),
-)
+```bash
+GEMINI_API_KEY="your-api-key" go run .
 ```
 
-## Customization
+## Configuration
 
-### Adding New Nodes
+Environment variables used by the project
 
-1. Create a new node in `nodes.go`:
-```go
-func CreateMyCustomNode() flyt.Node {
-    return flyt.NewNode(
-        // Your implementation
-    )
-}
-```
+- GEMINI_API_KEY (required): API key used by `utils/llm.go` to call Google's Generative Language API.
 
-2. Add it to your flow in `flow.go`:
-```go
-customNode := CreateMyCustomNode()
-flow.Connect(previousNode, "custom", customNode)
-```
+Runtime configuration in code
 
-### Integrating Different LLMs
+- The package-level variable `utils.DefaultModel` may be set by the application (for example in `main.go`) to override the default model (`gemini-2.5-flash`).
+- `LLMConfig` controls temperature and optionally `MaxTokens`.
 
-Modify `utils/llm.go` to support your preferred LLM provider:
-- OpenAI
-- Anthropic Claude
-- Google Gemini
-- Local models (Ollama, etc.)
+## LLM Utilities (what's in `utils/llm.go`)
 
-## Best Practices
+The helper exposes several convenience functions:
 
-1. **Single Responsibility**: Each node should do one thing well
-2. **Idempotency**: Nodes should be idempotent when possible
-3. **Error Handling**: Always handle errors appropriately
-4. **Context Awareness**: Respect context cancellation
-5. **Logging**: Add appropriate logging for debugging
+- CallLLM(prompt string) (string, error): Simple text-only call using default config.
+- CallLLMWithSearch(prompt string) (string, error): Enables the search tool in the request so the model can ground answers with web sources; returned text will include a **Sources** section if grounding data is present.
+- CallLLMWithImages(prompt string, imagePaths []string) (string, error): Send images alongside a text prompt by base64-encoding image files and attaching them to the request.
+- CallLLMWithConfig(prompt string, config *LLMConfig, useSearch bool) (string, error): Lower-level call that accepts config and an indicator to enable search tools.
+- CallLLMStreaming(...): A placeholder wrapper that currently calls the non-streaming call and forwards chunks — useful future extension.
+
+Notes on behavior
+
+- If `useSearch` is true, the request contains a `tools` section which causes Gemini to return grounding metadata (sources). The helper formats sources into a markdown list under `---\n**Sources:**`.
+- Images are encoded in base64 and a MIME type is inferred from the file extension (.jpg, .png, .webp, .heic, .heif). Unsupported extensions return an error.
+
+## Project layout (important files)
+
+- `main.go` — application entrypoint. Parses flags, sets `utils.DefaultModel` when needed and runs the flow.
+- `flow.go` — builds and connects your nodes into a Flyt flow.
+- `nodes.go` — node implementations (prep/exec/post lifecycle).
+- `utils/llm.go` — LLM helper functions (Gemini integration, images, search, streaming helper).
+- `docs/design.md` — higher-level design notes and architecture rationale.
+- `build_files/` — helper folder for output binaries and assets (example: `image.png`).
+
+If you add nodes, keep them small and single-purpose. Each node should read from the shared store in prep, perform main work in exec, and write back in post.
 
 ## Examples
 
-Check out the [Flyt cookbook](https://github.com/mark3labs/flyt/tree/main/cookbook) for more examples:
-- [Agent](https://github.com/mark3labs/flyt/tree/main/cookbook/agent) - AI agent with web search
-- [Chat](https://github.com/mark3labs/flyt/tree/main/cookbook/chat) - Interactive chat application
-- [MCP](https://github.com/mark3labs/flyt/tree/main/cookbook/mcp) - Model Context Protocol integration
-- [Summarize](https://github.com/mark3labs/flyt/tree/main/cookbook/summarize) - Text summarization with retries
+Basic question/answer flow (conceptual)
+
+1. Start node reads input text from the shared store.
+2. LLM node calls `utils.CallLLMWithSearch` to answer and attach grounding metadata.
+3. Post node stores the answer and either ends the flow or routes to follow-up nodes.
+
+Image prompts
+
+1. Provide image paths (e.g., `build_files/image.png`) to `CallLLMWithImages` to include images in the prompt.
+
+Batching and concurrency
+
+If you implement batch nodes, make them idempotent and control concurrency from the node implementation.
+
+## Development notes and edge cases
+
+Edge cases to consider when extending this project
+
+- Missing API key: `utils.getGEMINIAPIKey()` will return an error if `GEMINI_API_KEY` is not set.
+- Large responses or long-running ops: use context with timeouts or the streaming helper to limit memory usage.
+- Unsupported image formats: `CallLLMWithImages` will error for unknown extensions.
+- Rate limits & retries: add retry and exponential backoff around LLM calls if you expect network flakiness.
+
+## Tests and quality gates
+
+There are no unit tests included by default. When adding code, aim to cover:
+
+- Node prep/exec/post logic (small unit tests)
+- LLM helper serialization and error handling (mock HTTP responses)
 
 ## Contributing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+1. Fork the repo
+2. Create a feature branch
+3. Add tests for new behavior
+4. Run `go vet` and `go test ./...`
+5. Open a PR describing the changes
 
 ## License
 
-This template is MIT licensed. See LICENSE file for details.
+This project is MIT licensed. See the `LICENSE` file in the repository root for details.
 
-## Resources
+## Where to go next
 
-- [Flyt Documentation](https://github.com/mark3labs/flyt)
-- [Go Documentation](https://go.dev/doc/)
-- [OpenAI API Reference](https://platform.openai.com/docs/api-reference)
+- Read `docs/design.md` for architecture intent
+- Inspect `nodes.go` and `flow.go` to understand the sample flow
+- Try changing `utils.DefaultModel` in `main.go` to experiment with different Gemini models
+
+---
+
+If you want, I can also add a short example section in `main.go` showing how to set `utils.DefaultModel` from flags and a ready-to-run sample flow.
+
+## Hyprland / Rofi launcher (ask-ai script)
+
+There is a small launcher script included (at the repository root: `ask-ai`) that I use with Hyprland and Rofi to quickly call the compiled AI binary from a keyboard-driven menu. The script is a lightweight wrapper that:
+
+- Presents a Rofi menu for common actions (quick question, deeper analysis, clipboard image, screenshot region, full-screen screenshot)
+- Lets you pick a Gemini model (example values: `gemini-2.5-pro`, `gemini-2.5-flash`)
+- Passes mode, model and optional `-images` arguments to your compiled binary
+
+Important variables in the script
+
+- `PROJECT_DIR` — set this to the full path of your `my-flyt-project` folder (where the binary and `build_files/` live).
+- `AI_BINARY` — the name of the compiled binary inside the project (for example `build_files/ai-query` or simply `ai-query`).
+
+Example install (copy the script to `~/bin` and make executable):
+
+```bash
+# from the project root
+cp ask-ai ~/bin/ask-ai
+chmod +x ~/bin/ask-ai
+
+# Edit the script and set PROJECT_DIR and AI_BINARY, or wrap with a small launcher that passes them.
+```
+
+Usage in Hyprland/rofi
+
+- Bind a key in your Hyprland config to execute `~/bin/ask-ai` (or call it from a panel/launcher). The script will open a Rofi menu and launch the AI binary inside a terminal emulator.
+
+Notes
+
+- The `ask-ai` script uses `grim`/`slurp`/`wl-paste` on Wayland for screenshots and clipboard handling; adjust commands if you use X11 or different tools.
+- When passing screenshot/clipboard images, the script creates a temporary PNG and cleans it up after the binary finishes.
+
+If you'd like, I can add a short example Hyprland keybind snippet and a tiny systemd user service to make the launcher available system-wide. 

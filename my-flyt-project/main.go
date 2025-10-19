@@ -144,33 +144,4 @@ func main() {
 		}
 	}
 
-	// Run the flow
-
-	// Display results based on mode
-	// switch *mode {
-	// case "qa", "agent":
-
-	// case "batch":
-	// 	if results, ok := shared.Get("final_results"); ok {
-	// 		fmt.Println("\n✅ Batch Processing Complete:")
-	// 		fmt.Println(results)
-	// 	}
 }
-
-// Example of how to run the application:
-//
-// Basic Q&A mode:
-//   go run .
-//
-// Agent mode with a question:
-//   go run . -mode agent "What is the capital of France?"
-//
-// Batch processing mode:
-//   go run . -mode batch
-//
-// With verbose output:
-//   go run . -v -mode qa
-//
-// With different Gemini model:
-//   go run . -model gemini-2.5-flash
-//   go run . -model gemini-2.5-pro

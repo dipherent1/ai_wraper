@@ -1,0 +1,95 @@
+#!/bin/bash
+
+# The definitive, minimal, keyboard-driven AI script using Rofi.
+
+# --- Configuration ---
+PROJECT_DIR="" # The full path to your project folder.
+AI_BINARY=""              # The name of the compiled binary inside that folder.
+
+# --- Helper Function for Rofi Menus ---
+# Takes a prompt string and a list of options separated by newlines.
+# Returns the user's choice.
+show_menu() {
+    local prompt="$1"
+    local options="$2"
+    echo -e "$options" | rofi -dmenu -p "$prompt" -i
+}
+
+# --- Step 1: Main Action Menu ---
+main_options="💬 Quick Question\n🧠 Deeper Analysis\n📋 Analyze Clipboard Image\n📸 Analyze Screenshot (Region)\n🖥️ Analyze Screenshot (Full Screen)"
+choice=$(show_menu "AI Action" "$main_options")
+
+# Exit if the user pressed Esc in Rofi
+if [ -z "$choice" ]; then exit 0; fi
+
+# --- Step 2: Set Mode and Image Source based on choice ---
+MODE=""
+IMAGE_PATHS=""
+TEMP_FILE=""
+
+# Define a cleanup function to delete the temp screenshot file
+cleanup() {
+  if [ -n "$TEMP_FILE" ] && [ -f "$TEMP_FILE" ]; then
+    rm "$TEMP_FILE";
+  fi
+}
+trap cleanup EXIT
+
+case "$choice" in
+    "💬 Quick Question")
+        MODE="qa"
+        ;;
+    "🧠 Deeper Analysis")
+        MODE="agent"
+        ;;
+    "📋 Analyze Clipboard Image")
+        MODE="agent"
+        if wl-paste --list-types | grep -q "image/png"; then
+            TEMP_FILE=$(mktemp --suffix=.png)
+            wl-paste --type image/png > "$TEMP_FILE"
+            IMAGE_PATHS="$TEMP_FILE"
+        else
+            rofi -e "No image found on clipboard."
+            exit 1
+        fi
+        ;;
+    "📸 Analyze Screenshot (Region)")
+        MODE="agent"
+        TEMP_FILE=$(mktemp --suffix=.png)
+        # grim (screenshot tool) + slurp (region selector)
+        if ! grim -g "$(slurp)" "$TEMP_FILE"; then exit 0; fi # Exit if screenshot is cancelled
+        IMAGE_PATHS="$TEMP_FILE"
+        ;;
+    "🖥️ Analyze Screenshot (Full Screen)")
+        MODE="agent"
+        TEMP_FILE=$(mktemp --suffix=.png)
+        grim "$TEMP_FILE"
+        IMAGE_PATHS="$TEMP_FILE"
+        ;;
+esac
+
+# --- Step 3: Model Selection Menu ---
+model_options="🚀 Gemini 2.5 Pro\n⚡ Gemini 2.5 Flash"
+model_choice=$(show_menu "Model" "$model_options")
+if [ -z "$model_choice" ]; then exit 0; fi
+
+MODEL="gemini-2.5-pro"
+if [[ "$model_choice" == *"Flash"* ]]; then
+    MODEL="gemini-2.5-flash"
+fi
+
+# --- Step 4: Construct and Launch ---
+# This part is the robust, proven method from before.
+COMMAND_ARGS=(
+    "$AI_BINARY"
+    "-mode=$MODE"
+    "-model=$MODEL"
+)
+
+if [ -n "$IMAGE_PATHS" ]; then
+    COMMAND_ARGS+=("-images=$IMAGE_PATHS")
+fi
+
+# The final, bulletproof launch command.
+FINAL_COMMAND="cd '$PROJECT_DIR' && exec \"\${@}\""
+kitty --class=ai-popup -e bash -c "$FINAL_COMMAND" -- "${COMMAND_ARGS[@]}"
