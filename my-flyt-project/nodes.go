@@ -155,6 +155,78 @@ func CreateAnswerNode() flyt.Node {
 	)
 }
 
+func CreateSearchAnswerNode() flyt.Node {
+	return flyt.NewNode(
+		flyt.WithPrepFunc(func(ctx context.Context, shared *flyt.SharedStore) (any, error) {
+			// Read question from shared store
+			question, ok := shared.Get("question")
+			if !ok {
+				return nil, fmt.Errorf("no question found in shared store")
+			}
+
+			// Use helper to normalize history
+			h := getHistory(shared)
+			context, ok := shared.Get("context")
+			if !ok {
+				return nil, fmt.Errorf("no context found in shared store")
+			}
+
+			return map[string]any{
+				"question": question,
+				"history":  h.Conversations,
+				"context":  context,
+			}, nil
+		}),
+		flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
+			data := prepResult.(map[string]any)
+			question := data["question"].(string)
+			history := data["history"].([]Conversation)
+			context := data["context"].(string)
+
+			// Get API key from environment
+			apiKey := os.Getenv("GEMINI_API_KEY")
+			if apiKey == "" {
+				return nil, fmt.Errorf("GEMINI_API_KEY not set")
+			}
+
+			// Call LLM to get the answer
+			// Build prompt including a short serialized history if present
+			if context == "" {
+				context = " you are a helpful assistant. "
+			}
+			prompt := fmt.Sprintf("Context: %s\nAnswer this question: %s", context, question)
+			if len(history) > 0 {
+				// Serialize recent history entries into a simple text block
+				var b strings.Builder
+				for i, c := range history {
+					b.WriteString(fmt.Sprintf("%d. User: %s\n   AI: %v\n", i+1, c.User, c.AI))
+				}
+				prompt = fmt.Sprintf("Context: %s\nHistory:\n%s\nAnswer this question: %s", context, b.String(), question)
+			}
+
+			// Call LLM helper in utils
+			response, err := utils.CallLLMWithSearch(prompt)
+			if err != nil {
+				return nil, err
+			}
+
+			return response, nil
+		}),
+		flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {
+			// Store the answer and append to history using helpers
+			shared.Set("answer", execResult)
+			q, _ := shared.Get("question")
+			conv := Conversation{User: q.(string), AI: execResult}
+
+			h := getHistory(shared)
+			h.Conversations = append(h.Conversations, conv)
+			saveHistory(shared, h)
+
+			return flyt.DefaultAction, nil
+		}),
+	)
+}
+
 // CreateAnalyzeNode creates a node that analyzes input and decides next action
 func CreateAnalyzeNode() flyt.Node {
 	return flyt.NewNode(

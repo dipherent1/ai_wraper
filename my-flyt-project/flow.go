@@ -20,25 +20,25 @@ func CreateQAFlow() *flyt.Flow {
 // CreateAgentFlow creates a more complex agent flow with decision making
 func CreateAgentFlow() *flyt.Flow {
 	// Create nodes
-	analyzeNode := CreateAnalyzeNode()
-	searchNode := CreateSearchNode()
-	processNode := CreateProcessNode()
-	answerNode := CreateAnswerNode()
+	// analyzeNode := CreateAnalyzeNode()
+	searchAnswerNode := CreateSearchAnswerNode()
+	// processNode := CreateProcessNode()
+	// answerNode := CreateAnswerNode()
 
 	// Create flow with conditional routing
-	flow := flyt.NewFlow(analyzeNode)
+	flow := flyt.NewFlow(searchAnswerNode)
 
 	// Connect based on analysis results
-	flow.Connect(analyzeNode, "search", searchNode)
-	flow.Connect(analyzeNode, "process", processNode)
-	flow.Connect(analyzeNode, "answer", answerNode)
+	// flow.Connect(analyzeNode, "search", searchNode)
+	// flow.Connect(analyzeNode, "process", processNode)
+	// flow.Connect(analyzeNode, "answer", answerNode)
 
 	// Search can lead back to analyze or to process
-	flow.Connect(searchNode, "analyze", analyzeNode)
-	flow.Connect(searchNode, "process", processNode)
+	// flow.Connect(searchNode, "analyze", analyzeNode)
+	// flow.Connect(searchNode, "process", processNode)
 
 	// Process always leads to answer
-	flow.Connect(processNode, flyt.DefaultAction, answerNode)
+	// flow.Connect(processNode, flyt.DefaultAction, answerNode)
 
 	return flow
 }

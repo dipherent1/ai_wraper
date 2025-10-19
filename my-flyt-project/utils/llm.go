@@ -18,6 +18,17 @@ type LLMConfig struct {
 	MaxTokens   int     `json:"max_tokens,omitempty"`
 }
 
+type GroundingChunk struct {
+	Web struct {
+		URI   string `json:"uri"`
+		Title string `json:"title"`
+	} `json:"web"`
+}
+
+type GroundingMetadata struct {
+	GroundingChunks []GroundingChunk `json:"groundingChunks"`
+}
+
 // DefaultLLMConfig returns default configuration for Gemini
 func DefaultLLMConfig() *LLMConfig {
 
@@ -41,11 +52,14 @@ var DefaultModel string
 
 // CallLLM calls the Gemini API with the given prompt
 func CallLLM(prompt string) (string, error) {
-	return CallLLMWithConfig(prompt, DefaultLLMConfig())
+	return CallLLMWithConfig(prompt, DefaultLLMConfig(), false) // 'false' for useSearch
 }
 
-// CallLLMWithConfig calls the Gemini API with custom configuration
-func CallLLMWithConfig(prompt string, config *LLMConfig) (string, error) {
+func CallLLMWithSearch(prompt string) (string, error) {
+	return CallLLMWithConfig(prompt, DefaultLLMConfig(), true) // 'true' for useSearch
+}
+
+func CallLLMWithConfig(prompt string, config *LLMConfig, useSearch bool) (string, error) {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
 		return "", fmt.Errorf("GEMINI_API_KEY environment variable not set")
@@ -66,7 +80,15 @@ func CallLLMWithConfig(prompt string, config *LLMConfig) (string, error) {
 		},
 	}
 
-	// Add max_tokens to generationConfig if specified
+	// THE KEY CHANGE: If useSearch is true, add the "tools" section to the request
+	if useSearch {
+		requestBody["tools"] = []map[string]any{
+			{
+				"google_search": map[string]any{}, // This enables the tool
+			},
+		}
+	}
+
 	if config.MaxTokens > 0 {
 		genConfig := requestBody["generationConfig"].(map[string]any)
 		genConfig["maxOutputTokens"] = config.MaxTokens
@@ -77,7 +99,6 @@ func CallLLMWithConfig(prompt string, config *LLMConfig) (string, error) {
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Create HTTP request for Gemini API
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", config.Model, apiKey)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -86,9 +107,8 @@ func CallLLMWithConfig(prompt string, config *LLMConfig) (string, error) {
 
 	req.Header.Set("Content-Type", "application/json")
 
-	// Make request with timeout
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 60 * time.Second, // Increased timeout for potential search
 	}
 
 	resp, err := client.Do(req)
@@ -97,7 +117,6 @@ func CallLLMWithConfig(prompt string, config *LLMConfig) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("failed to read response: %w", err)
@@ -107,7 +126,7 @@ func CallLLMWithConfig(prompt string, config *LLMConfig) (string, error) {
 		return "", fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse Gemini API response
+	// The response structure is the same, as Gemini provides the grounded answer directly
 	var result struct {
 		Candidates []struct {
 			Content struct {
