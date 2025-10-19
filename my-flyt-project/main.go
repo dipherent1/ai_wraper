@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -14,6 +15,33 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/mark3labs/flyt"
 )
+
+func readMultiLineInput(reader *bufio.Reader) (string, error) {
+	var builder strings.Builder
+	fmt.Println("(Enter your text. Type EOF on a new line or press Ctrl+D to finish)")
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			// io.EOF is the signal sent by Ctrl+D. It's not a "real" error.
+			if err == io.EOF {
+				return builder.String(), nil
+			}
+			// A different, unexpected error occurred.
+			return "", err
+		}
+
+		// Check if the user typed the delimiter.
+		if strings.TrimSpace(line) == "EOF" {
+			break
+		}
+
+		// Add the line to our builder.
+		builder.WriteString(line)
+	}
+
+	return builder.String(), nil
+}
 
 func main() {
 	err := godotenv.Load()
@@ -75,18 +103,25 @@ func main() {
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
-
-		// Prompt for question if not provided
-		fmt.Print("Enter your question: ")
-		question, err := reader.ReadString('\n')
+		fmt.Print("\nYou: ")
+		// Call our new multi-line input function instead of the single-line read.
+		userInput, err := readMultiLineInput(reader)
 		if err != nil {
 			log.Fatalf("Failed to read input: %v", err)
 		}
-		question = strings.TrimSpace(question)
-		if question == "" {
-			question = "What is the capital of France?"
+		userInput = strings.TrimSpace(userInput)
+
+		// If the user enters *only* "quit" or "exit", we should still quit.
+		// If they enter nothing (just Ctrl+D on an empty prompt), we should prompt again.
+		if userInput == "" {
+			continue
 		}
-		shared.Set("question", question)
+		if strings.ToLower(userInput) == "quit" || strings.ToLower(userInput) == "exit" {
+			fmt.Println("🤖 Goodbye!")
+			break
+		}
+
+		shared.Set("question", userInput)
 
 		fmt.Println("🚀 Running flow...")
 		err = flow.Run(ctx, shared)
