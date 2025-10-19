@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -60,6 +61,11 @@ func CallLLMWithSearch(prompt string) (string, error) {
 }
 
 func CallLLMWithConfig(prompt string, config *LLMConfig, useSearch bool) (string, error) {
+	var builder strings.Builder
+	builder.WriteString(prompt)
+	builder.WriteString("\n always answer using markdown format.")
+	prompt = builder.String()
+
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
 		return "", fmt.Errorf("GEMINI_API_KEY environment variable not set")
@@ -126,7 +132,6 @@ func CallLLMWithConfig(prompt string, config *LLMConfig, useSearch bool) (string
 		return "", fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// The response structure is the same, as Gemini provides the grounded answer directly
 	var result struct {
 		Candidates []struct {
 			Content struct {
@@ -134,6 +139,7 @@ func CallLLMWithConfig(prompt string, config *LLMConfig, useSearch bool) (string
 					Text string `json:"text"`
 				} `json:"parts"`
 			} `json:"content"`
+			GroundingMetadata GroundingMetadata `json:"groundingMetadata"`
 		} `json:"candidates"`
 	}
 
@@ -145,7 +151,21 @@ func CallLLMWithConfig(prompt string, config *LLMConfig, useSearch bool) (string
 		return "", fmt.Errorf("no response from API")
 	}
 
-	return result.Candidates[0].Content.Parts[0].Text, nil
+	answerText := result.Candidates[0].Content.Parts[0].Text
+
+	if len(result.Candidates[0].GroundingMetadata.GroundingChunks) > 0 {
+		var builder strings.Builder
+		builder.WriteString(answerText) // Start with the answer
+		builder.WriteString("\n\n---\n**Sources:**\n")
+
+		// Loop through the sources and format them
+		for i, chunk := range result.Candidates[0].GroundingMetadata.GroundingChunks {
+			builder.WriteString(fmt.Sprintf("%d. %s (%s)\n", i+1, chunk.Web.Title, chunk.Web.URI))
+		}
+		return builder.String(), nil
+	}
+	return answerText, nil
+
 }
 
 // CallLLMStreaming calls the Gemini API with streaming response
