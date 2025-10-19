@@ -41,6 +41,7 @@ func main() {
 	var history History
 	// Store the full History struct (not just the slice) for easier retrieval
 	shared.Set("history", history)
+	shared.Set("context", " you are a helpful assistant. ")
 
 	// Create context
 	ctx := context.Background()

@@ -1,13 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"flyt-project-template/utils"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -94,10 +94,15 @@ func CreateAnswerNode() flyt.Node {
 
 			// Use helper to normalize history
 			h := getHistory(shared)
+			context, ok := shared.Get("context")
+			if !ok {
+				return nil, fmt.Errorf("no context found in shared store")
+			}
 
 			return map[string]any{
 				"question": question,
 				"history":  h.Conversations,
+				"context":  context,
 			}, nil
 		}),
 		flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
@@ -114,6 +119,9 @@ func CreateAnswerNode() flyt.Node {
 
 			// Call LLM to get the answer
 			// Build prompt including a short serialized history if present
+			if context == "" {
+				context = " you are a helpful assistant. "
+			}
 			prompt := fmt.Sprintf("Context: %s\nAnswer this question: %s", context, question)
 			if len(history) > 0 {
 				// Serialize recent history entries into a simple text block
@@ -186,7 +194,6 @@ func CreateAnalyzeNode() flyt.Node {
 }
 
 // CreateSearchNode creates a node that performs web search
-// CreateSearchNode creates a node that performs a real web search using Tavily AI
 func CreateSearchNode() flyt.Node {
 	return flyt.NewNode(
 		flyt.WithPrepFunc(func(ctx context.Context, shared *flyt.SharedStore) (any, error) {
@@ -194,12 +201,10 @@ func CreateSearchNode() flyt.Node {
 			if !ok {
 				return nil, fmt.Errorf("no question found in shared store")
 			}
-			apiKey := os.Getenv("TAVILY_API_KEY")
+			apiKey := os.Getenv("SERPAPI_API_KEY")
 			if apiKey == "" {
-				return nil, fmt.Errorf("TAVILY_API_KEY environment variable not set")
+				return nil, fmt.Errorf("SERPAPI_API_KEY environment variable not set")
 			}
-
-			fmt.Println("Using Tavily API Key:", apiKey)
 			return map[string]string{
 				"question": question.(string),
 				"apiKey":   apiKey,
@@ -210,21 +215,19 @@ func CreateSearchNode() flyt.Node {
 			question := data["question"]
 			apiKey := data["apiKey"]
 
-			fmt.Println("🔎 Performing web search...")
+			fmt.Println("🔎 Performing web search with SerpApi...")
 
-			// 1. Prepare the request body for Tavily API
-			requestBody, err := json.Marshal(map[string]interface{}{
-				"api_key":      apiKey,
-				"query":        question,
-				"search_depth": "basic",
-				"max_results":  3, // Get top 3 results
-			})
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal search request: %w", err)
-			}
+			// 1. Construct the URL with query parameters for a GET request
+			baseURL := "https://serpapi.com/search.json"
+			params := url.Values{}
+			params.Add("q", question)
+			params.Add("api_key", apiKey)
+			params.Add("engine", "google") // We want to use the Google search engine
 
-			// 2. Make the HTTP POST request
-			resp, err := http.Post("https://api.tavily.com/search", "application/json", bytes.NewBuffer(requestBody))
+			fullURL := baseURL + "?" + params.Encode()
+
+			// 2. Make the HTTP GET request
+			resp, err := http.Get(fullURL)
 			if err != nil {
 				return nil, fmt.Errorf("failed to make search request: %w", err)
 			}
@@ -240,32 +243,34 @@ func CreateSearchNode() flyt.Node {
 
 			// 3. Parse the JSON response
 			var searchResponse struct {
-				Results []struct {
+				OrganicResults []struct {
 					Title   string `json:"title"`
-					URL     string `json:"url"`
-					Content string `json:"content"`
-				} `json:"results"`
+					Link    string `json:"link"`
+					Snippet string `json:"snippet"`
+				} `json:"organic_results"`
 			}
 			if err := json.Unmarshal(body, &searchResponse); err != nil {
 				return nil, fmt.Errorf("failed to parse search response: %w", err)
 			}
 
-			if len(searchResponse.Results) == 0 {
+			if len(searchResponse.OrganicResults) == 0 {
 				return "No relevant search results found.", nil
 			}
 
-			// 4. Format results into a single string for the next LLM call
+			// 4. Format top results into a single string
 			var resultsBuilder strings.Builder
 			resultsBuilder.WriteString("Web search results:\n\n")
-			for i, result := range searchResponse.Results {
-				resultsBuilder.WriteString(fmt.Sprintf("Source %d: %s (%s)\nContent: %s\n\n", i+1, result.Title, result.URL, result.Content))
+			for i, result := range searchResponse.OrganicResults {
+				if i >= 3 { // Limit to the top 3 results
+					break
+				}
+				resultsBuilder.WriteString(fmt.Sprintf("Source %d: %s (%s)\nContent: %s\n\n", i+1, result.Title, result.Link, result.Snippet))
 			}
 
 			return resultsBuilder.String(), nil
 		}),
 		flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {
 			shared.Set("search_results", execResult)
-			// Now that we have results, go back to the analyze node to decide the next step
 			return "analyze", nil
 		}),
 	)
