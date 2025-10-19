@@ -20,13 +20,17 @@ func CreateQAFlow() *flyt.Flow {
 // CreateAgentFlow creates a more complex agent flow with decision making
 func CreateAgentFlow() *flyt.Flow {
 	// Create nodes
-	// analyzeNode := CreateAnalyzeNode()
+	analyzeNode := CreateAnalyzeNode()
 	searchAnswerNode := CreateSearchAnswerNode()
+	imageAnswerNode := CreateImageAnswerNode()
 	// processNode := CreateProcessNode()
 	// answerNode := CreateAnswerNode()
 
 	// Create flow with conditional routing
-	flow := flyt.NewFlow(searchAnswerNode)
+	flow := flyt.NewFlow(analyzeNode)
+
+	flow.Connect(analyzeNode, "search", searchAnswerNode)
+	flow.Connect(analyzeNode, "analyze_images", imageAnswerNode)
 
 	// Connect based on analysis results
 	// flow.Connect(analyzeNode, "search", searchNode)

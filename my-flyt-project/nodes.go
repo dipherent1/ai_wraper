@@ -110,12 +110,7 @@ func CreateAnswerNode() flyt.Node {
 			question := data["question"].(string)
 			history := data["history"].([]Conversation)
 			context := data["context"].(string)
-
-			// Get API key from environment
-			apiKey := os.Getenv("GEMINI_API_KEY")
-			if apiKey == "" {
-				return nil, fmt.Errorf("GEMINI_API_KEY not set")
-			}
+			fmt.Println("🔎 Generating answer with LLM... CreateAnswerNode")
 
 			// Call LLM to get the answer
 			// Build prompt including a short serialized history if present
@@ -182,14 +177,8 @@ func CreateSearchAnswerNode() flyt.Node {
 			question := data["question"].(string)
 			history := data["history"].([]Conversation)
 			context := data["context"].(string)
+			fmt.Println("🔎 Generating answer with LLM... CreateSearchAnswerNode")
 
-			// Get API key from environment
-			apiKey := os.Getenv("GEMINI_API_KEY")
-			if apiKey == "" {
-				return nil, fmt.Errorf("GEMINI_API_KEY not set")
-			}
-
-			// Call LLM to get the answer
 			// Build prompt including a short serialized history if present
 			if context == "" {
 				context = " you are a helpful assistant. "
@@ -227,6 +216,79 @@ func CreateSearchAnswerNode() flyt.Node {
 	)
 }
 
+func CreateImageAnswerNode() flyt.Node {
+	return flyt.NewNode(
+		flyt.WithPrepFunc(func(ctx context.Context, shared *flyt.SharedStore) (any, error) {
+			// Read question from shared store
+			question, ok := shared.Get("question")
+			if !ok {
+				return nil, fmt.Errorf("no question found in shared store")
+			}
+			imagePaths, ok := shared.Get("image_paths")
+			if !ok {
+				return nil, fmt.Errorf("no image paths found in shared store")
+			}
+
+			// Use helper to normalize history
+			h := getHistory(shared)
+			context, ok := shared.Get("context")
+			if !ok {
+				return nil, fmt.Errorf("no context found in shared store")
+			}
+
+			return map[string]any{
+				"question":    question,
+				"history":     h.Conversations,
+				"context":     context,
+				"image_paths": imagePaths,
+			}, nil
+		}),
+		flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
+			data := prepResult.(map[string]any)
+			question := data["question"].(string)
+			history := data["history"].([]Conversation)
+			context := data["context"].(string)
+			imagePaths := data["image_paths"].([]string)
+
+			fmt.Println("🔎 Generating answer with LLM... CreateImageAnswerNode")
+
+			// Build prompt including a short serialized history if present
+			if context == "" {
+				context = " you are a helpful assistant. "
+			}
+			prompt := fmt.Sprintf("Context: %s\nAnswer this request: %s", context, question)
+			if len(history) > 0 {
+				// Serialize recent history entries into a simple text block
+				var b strings.Builder
+				for i, c := range history {
+					b.WriteString(fmt.Sprintf("%d. User: %s\n   AI: %v\n", i+1, c.User, c.AI))
+				}
+				prompt = fmt.Sprintf("Context: %s\nHistory:\n%s\nAnswer this question: %s", context, b.String(), question)
+			}
+
+			// Call LLM helper in utils
+			response, err := utils.CallLLMWithImages(prompt, imagePaths)
+			if err != nil {
+				return nil, err
+			}
+
+			return response, nil
+		}),
+		flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {
+			// Store the answer and append to history using helpers
+			shared.Set("answer", execResult)
+			q, _ := shared.Get("question")
+			conv := Conversation{User: q.(string), AI: execResult}
+
+			h := getHistory(shared)
+			h.Conversations = append(h.Conversations, conv)
+			saveHistory(shared, h)
+
+			return flyt.DefaultAction, nil
+		}),
+	)
+}
+
 // CreateAnalyzeNode creates a node that analyzes input and decides next action
 func CreateAnalyzeNode() flyt.Node {
 	return flyt.NewNode(
@@ -236,19 +298,29 @@ func CreateAnalyzeNode() flyt.Node {
 				return nil, fmt.Errorf("no question found in shared store")
 			}
 			searchResults, _ := shared.Get("search_results")
+			image_paths, _ := shared.Get("image_paths")
 
 			return map[string]any{
 				"question":       question,
 				"search_results": searchResults,
+				"image_paths":    image_paths,
 			}, nil
 		}), flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
 			data := prepResult.(map[string]any)
 
 			// Simple logic to decide next action
 			// In a real implementation, this could use an LLM to make decisions
-			if data["search_results"] == nil {
-				// No search results yet, might need to search
-				return "search", nil
+			// if data["search_results"] == nil {
+			// 	// No search results yet, might need to search
+			// 	return "search", nil
+			// }
+
+			fmt.Println("🔎 Analyzing inputs to decide next action...")
+
+			if v, ok := data["image_paths"]; ok && v != nil {
+				if imgs, ok := v.([]string); ok && len(imgs) > 0 {
+					return "analyze_images", nil
+				}
 			}
 			// prompt := fmt.Sprintf("Answer this question: %s", question)
 			// if data["context"] != nil {
@@ -256,7 +328,7 @@ func CreateAnalyzeNode() flyt.Node {
 			// }
 
 			// We have search results, process them
-			return "process", nil
+			return "search", nil
 		}),
 		flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {
 			action := execResult.(string)

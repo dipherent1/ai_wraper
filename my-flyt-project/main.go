@@ -70,6 +70,7 @@ func main() {
 	// Store the full History struct (not just the slice) for easier retrieval
 	shared.Set("history", history)
 	shared.Set("context", " you are a helpful assistant. ")
+	shared.Set("image_paths", []string{}) // Initialize with a sample image path
 
 	// Create context
 	ctx := context.Background()
@@ -162,3 +163,7 @@ func main() {
 //
 // With verbose output:
 //   go run . -v -mode qa
+//
+// With different Gemini model:
+//   go run . -model gemini-2.5-flash
+//   go run . -model gemini-2.5-pro
