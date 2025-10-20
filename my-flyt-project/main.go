@@ -170,7 +170,7 @@ func main() {
 		fmt.Println("\n🎉 Flow completed successfully!")
 		if answer, ok := shared.Get("answer"); ok {
 			fmt.Println("\n✅ Answer:")
-			fmt.Println(answer)
+			// fmt.Println(answer)
 			if err := displayAnswer(answer.(string)); err != nil {
 				// If Glow fails, fall back to plain text.
 				fmt.Println("Glow renderer failed, printing raw text:")
