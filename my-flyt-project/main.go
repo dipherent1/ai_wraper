@@ -63,7 +63,7 @@ func displayAnswer(answer string) error {
 
 	// Prepare the 'glow' command to render the file.
 	// We use '-p' to make it behave like a pager (like 'less').
-	cmd := exec.Command("glow", tmpFile.Name())
+	cmd := exec.Command("glow", "-s", "dark", tmpFile.Name())
 
 	// Connect the command's output directly to your terminal's output.
 	cmd.Stdout = os.Stdout
