@@ -169,11 +169,17 @@ GEMINI_API_KEY="your-api-key" go run .
 Environment variables used by the project
 
 - GEMINI_API_KEY (required): API key used by `utils/llm.go` to call Google's Generative Language API.
+- SYSTEM_INSTRUCTIONS_PATH (optional): Path to a markdown file with system instructions. Defaults to `config/system_instructions.md`.
 
 Runtime configuration in code
 
 - The package-level variable `utils.DefaultModel` may be set by the application (for example in `main.go`) to override the default model (`gemini-2.5-flash`).
 - `LLMConfig` controls temperature and optionally `MaxTokens`.
+
+System instructions
+
+- The file `config/system_instructions.md` contains the persistent system prompt. You can customize it to set tone, safety rules, and formatting preferences. The contents are sent to the model via the `systemInstruction` field on each request.
+- To use a different file per environment or run, set `SYSTEM_INSTRUCTIONS_PATH`.
 
 ## LLM Utilities (what's in `utils/llm.go`)
 
@@ -287,4 +293,4 @@ Notes
 - The `ask-ai` script uses `grim`/`slurp`/`wl-paste` on Wayland for screenshots and clipboard handling; adjust commands if you use X11 or different tools.
 - When passing screenshot/clipboard images, the script creates a temporary PNG and cleans it up after the binary finishes.
 
-If you'd like, I can add a short example Hyprland keybind snippet and a tiny systemd user service to make the launcher available system-wide. 
+If you'd like, I can add a short example Hyprland keybind snippet and a tiny systemd user service to make the launcher available system-wide.

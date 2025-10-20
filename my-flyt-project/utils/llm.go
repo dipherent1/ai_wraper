@@ -61,6 +61,28 @@ func DefaultLLMConfig() *LLMConfig {
 // It can be set by the application (for example in `main.go`) after parsing flags.
 var DefaultModel string
 
+// Default path to system instructions (can be overridden with SYSTEM_INSTRUCTIONS_PATH).
+const defaultSystemInstructionsPath = "config/system_instructions.md"
+
+// loadSystemInstructions reads system instruction text from disk.
+// It checks the env var SYSTEM_INSTRUCTIONS_PATH first, then falls back to the default path.
+func loadSystemInstructions() string {
+	// Allow override via env var
+	path := os.Getenv("SYSTEM_INSTRUCTIONS_PATH")
+	if strings.TrimSpace(path) == "" {
+		path = defaultSystemInstructionsPath
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		// Non-fatal: log once and proceed without system instructions
+		log.Printf("system instructions not loaded from %s: %v", path, err)
+		return ""
+	}
+	text := strings.TrimSpace(string(data))
+	return text
+}
+
 // CallLLM calls the Gemini API with the given prompt
 func CallLLM(prompt string) (string, error) {
 	return CallLLMWithConfig(prompt, DefaultLLMConfig(), false) // 'false' for useSearch
@@ -82,6 +104,8 @@ func CallLLMWithConfig(prompt string, config *LLMConfig, useSearch bool) (string
 	}
 
 	// Prepare request body for Gemini API
+	// Try to attach system instructions if present.
+	sys := loadSystemInstructions()
 	requestBody := map[string]any{
 		"contents": []map[string]any{
 			{
@@ -94,6 +118,15 @@ func CallLLMWithConfig(prompt string, config *LLMConfig, useSearch bool) (string
 		"generationConfig": map[string]any{
 			"temperature": config.Temperature,
 		},
+	}
+
+	if sys != "" {
+		// Gemini supports a top-level systemInstruction field containing parts.
+		requestBody["systemInstruction"] = map[string]any{
+			"parts": []map[string]string{
+				{"text": sys},
+			},
+		}
 	}
 
 	// THE KEY CHANGE: If useSearch is true, add the "tools" section to the request
