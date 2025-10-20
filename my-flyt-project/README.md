@@ -1,7 +1,8 @@
 # Flyt Project Template
 
-A minimalist workflow template for building LLM applications with [Flyt](https://github.com/mark3labs/flyt), a Go-based workflow framework with zero dependencies.
+This is a modification of A minimalist workflow template for building LLM applications with [Flyt](https://github.com/mark3labs/flyt), a Go-based workflow framework with zero dependencies.
 
+I made this for my personal use to configure my fedora-hyprland and have a fast answering agent powered by Gemini API to avoid having to open a browser for simple questions.
 ## Overview
 
 This template provides a starting point for building LLM-powered applications using Flyt's graph-based workflow system. It includes:
