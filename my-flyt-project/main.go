@@ -45,15 +45,12 @@ func readMultiLineInput(reader *bufio.Reader) (string, error) {
 }
 
 func displayAnswer(answer string) error {
-	// Create a secure temporary file to hold the markdown content.
 	tmpFile, err := os.CreateTemp("", "ai-answer-*.md")
 	if err != nil {
 		return fmt.Errorf("could not create temp file: %w", err)
 	}
-	// IMPORTANT: Ensure the temporary file is deleted when we're done.
 	defer os.Remove(tmpFile.Name())
 
-	// Write the AI's answer into the temporary file.
 	if _, err := tmpFile.Write([]byte(answer)); err != nil {
 		return fmt.Errorf("could not write to temp file: %w", err)
 	}
@@ -61,15 +58,14 @@ func displayAnswer(answer string) error {
 		return fmt.Errorf("could not close temp file: %w", err)
 	}
 
-	// Prepare the 'glow' command to render the file.
-	// We use '-p' to make it behave like a pager (like 'less').
-	cmd := exec.Command("glow", "-s", "dark", tmpFile.Name())
+	// --- THIS IS THE ONLY LINE THAT CHANGES ---
+	// We use 'bat' with flags for a clean, non-interactive output.
+	cmd := exec.Command("bat", "--paging=never", "--style=plain", "--language=markdown", tmpFile.Name())
+	// ------------------------------------------
 
-	// Connect the command's output directly to your terminal's output.
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	// Run the command. This will take over the terminal to display the content.
 	return cmd.Run()
 }
 
