@@ -14,12 +14,26 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"flyt-project-template/utils"
 
 	"github.com/joho/godotenv"
 	"github.com/mark3labs/flyt"
 )
+
+var ConversationName string
+
+func TruncateString(s string, n int) string {
+	// If the string has N or fewer characters, return the whole string.
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+
+	// Otherwise, convert to a slice of runes, take the first N, and convert back.
+	runes := []rune(s)
+	return string(runes[0:n])
+}
 
 func readMultiLineInput(reader *bufio.Reader) (string, error) {
 	var builder strings.Builder
@@ -106,9 +120,22 @@ func setupSignalHandler(shared *flyt.SharedStore) {
 			os.Exit(1) // Exit with an error code
 		}
 
+		// Ensure the Conversations directory exists.
+		dir := "Conversations"
+		err = os.MkdirAll(dir, 0755)
+		if err != nil {
+			log.Printf("Error creating directory %s: %v", dir, err)
+			os.Exit(1)
+		}
+
 		// Create a unique filename with a timestamp.
 		timestamp := time.Now().Format("2006-01-02_15-04-05")
-		fileName := fmt.Sprintf("conversation_%s.json", timestamp)
+		baseName := timestamp
+		if ConversationName != "" {
+			// sanitize spaces for filename
+			baseName = strings.ReplaceAll(ConversationName, " ", "_") + "_" + timestamp
+		}
+		fileName := dir + string(os.PathSeparator) + baseName + ".json"
 
 		// Write the JSON data to the file.
 		err = os.WriteFile(fileName, jsonData, 0644)
@@ -210,6 +237,12 @@ func main() {
 		}
 
 		shared.Set("question", userInput)
+		if ConversationName == "" {
+			ConversationName = TruncateString(userInput, 20)
+			ConversationName = strings.ReplaceAll(ConversationName, " ", "_")
+			shared.Set("conversation_name", ConversationName)
+
+		}
 
 		fmt.Println("🚀 Running flow...")
 		err = flow.Run(ctx, shared)
