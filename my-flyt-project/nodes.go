@@ -14,73 +14,10 @@ import (
 	"github.com/mark3labs/flyt"
 )
 
-// make a struct of user and ai conversation
-type Conversation struct {
-	User string
-	AI   any
-}
-
-type History struct {
-	Conversations []Conversation
-}
-
-// getHistory reads history from shared store and normalizes it to History.
-func getHistory(shared *flyt.SharedStore) History {
-	raw, _ := shared.Get("history")
-	switch v := raw.(type) {
-	case History:
-		return v
-	case []Conversation:
-		return History{Conversations: v}
-	case nil:
-		return History{}
-	default:
-		// Best-effort conversion from []interface{} with map[string]interface{}
-		if s, ok := raw.([]interface{}); ok {
-			convs := make([]Conversation, 0, len(s))
-			for _, it := range s {
-				if m, ok := it.(map[string]interface{}); ok {
-					var c Conversation
-					if user, ok := m["User"].(string); ok {
-						c.User = user
-					}
-					if ai, ok := m["AI"]; ok {
-						c.AI = ai
-					}
-					convs = append(convs, c)
-				}
-			}
-			return History{Conversations: convs}
-		}
-		return History{}
-	}
-}
-
 // saveHistory writes the History back into the shared store.
-func saveHistory(shared *flyt.SharedStore, h History) {
+func saveHistory(shared *flyt.SharedStore, h utils.History) {
 	shared.Set("history", h)
 }
-
-// CreateGetQuestionNode creates a node that gets a question from user input
-// func CreateGetQuestionNode() flyt.Node {
-// 	return flyt.NewNode(
-// 		flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
-// 			// Get question from user input
-// 			reader := bufio.NewReader(os.Stdin)
-// 			fmt.Print("Enter your question: ")
-// 			userQuestion, err := reader.ReadString('\n')
-// 			if err != nil {
-// 				return nil, err
-// 			}
-// 			return strings.TrimSpace(userQuestion), nil
-// 		}),
-// 		flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {
-// 			// Store the user's question
-// 			shared.Set("question", execResult)
-// 			return flyt.DefaultAction, nil
-// 		}),
-// 	)
-// }
 
 // CreateAnswerNode creates a node that generates an answer using LLM
 func CreateAnswerNode() flyt.Node {
@@ -93,7 +30,7 @@ func CreateAnswerNode() flyt.Node {
 			}
 
 			// Use helper to normalize history
-			h := getHistory(shared)
+			h := utils.GetHistory(shared)
 			context, ok := shared.Get("context")
 			if !ok {
 				return nil, fmt.Errorf("no context found in shared store")
@@ -108,7 +45,7 @@ func CreateAnswerNode() flyt.Node {
 		flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
 			data := prepResult.(map[string]any)
 			question := data["question"].(string)
-			history := data["history"].([]Conversation)
+			history := data["history"].([]utils.Conversation)
 			context := data["context"].(string)
 			fmt.Println("🔎 Generating answer with LLM... CreateAnswerNode")
 
@@ -139,9 +76,9 @@ func CreateAnswerNode() flyt.Node {
 			// Store the answer and append to history using helpers
 			shared.Set("answer", execResult)
 			q, _ := shared.Get("question")
-			conv := Conversation{User: q.(string), AI: execResult}
+			conv := utils.Conversation{User: q.(string), AI: execResult}
 
-			h := getHistory(shared)
+			h := utils.GetHistory(shared)
 			h.Conversations = append(h.Conversations, conv)
 			saveHistory(shared, h)
 
@@ -160,7 +97,7 @@ func CreateSearchAnswerNode() flyt.Node {
 			}
 
 			// Use helper to normalize history
-			h := getHistory(shared)
+			h := utils.GetHistory(shared)
 			context, ok := shared.Get("context")
 			if !ok {
 				return nil, fmt.Errorf("no context found in shared store")
@@ -175,7 +112,7 @@ func CreateSearchAnswerNode() flyt.Node {
 		flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
 			data := prepResult.(map[string]any)
 			question := data["question"].(string)
-			history := data["history"].([]Conversation)
+			history := data["history"].([]utils.Conversation)
 			context := data["context"].(string)
 			fmt.Println("🔎 Generating answer with LLM... CreateSearchAnswerNode")
 
@@ -205,9 +142,9 @@ func CreateSearchAnswerNode() flyt.Node {
 			// Store the answer and append to history using helpers
 			shared.Set("answer", execResult)
 			q, _ := shared.Get("question")
-			conv := Conversation{User: q.(string), AI: execResult}
+			conv := utils.Conversation{User: q.(string), AI: execResult}
 
-			h := getHistory(shared)
+			h := utils.GetHistory(shared)
 			h.Conversations = append(h.Conversations, conv)
 			saveHistory(shared, h)
 
@@ -230,7 +167,7 @@ func CreateImageAnswerNode() flyt.Node {
 			}
 
 			// Use helper to normalize history
-			h := getHistory(shared)
+			h := utils.GetHistory(shared)
 			context, ok := shared.Get("context")
 			if !ok {
 				return nil, fmt.Errorf("no context found in shared store")
@@ -246,7 +183,7 @@ func CreateImageAnswerNode() flyt.Node {
 		flyt.WithExecFunc(func(ctx context.Context, prepResult any) (any, error) {
 			data := prepResult.(map[string]any)
 			question := data["question"].(string)
-			history := data["history"].([]Conversation)
+			history := data["history"].([]utils.Conversation)
 			context := data["context"].(string)
 			imagePaths := data["image_paths"].([]string)
 
@@ -278,9 +215,9 @@ func CreateImageAnswerNode() flyt.Node {
 			// Store the answer and append to history using helpers
 			shared.Set("answer", execResult)
 			q, _ := shared.Get("question")
-			conv := Conversation{User: q.(string), AI: execResult}
+			conv := utils.Conversation{User: q.(string), AI: execResult}
 
-			h := getHistory(shared)
+			h := utils.GetHistory(shared)
 			h.Conversations = append(h.Conversations, conv)
 			saveHistory(shared, h)
 
@@ -456,10 +393,10 @@ func CreateProcessNode() flyt.Node {
 		}), flyt.WithPostFunc(func(ctx context.Context, shared *flyt.SharedStore, prepResult, execResult any) (flyt.Action, error) {
 			shared.Set("context", execResult)
 			// q, _ := shared.Get("question")
-			// conv := Conversation{User: q.(string), AI: execResult}
+			// conv := utils.Conversation{User: q.(string), AI: execResult}
 
-			// h := getHistory(shared)
-			// h.Conversations = append(h.Conversations, conv)
+			// h := utils.GetHistory(shared)
+			// h.utils.Conversations = append(h.utils.Conversations, conv)
 			// saveHistory(shared, h)
 			return flyt.DefaultAction, nil
 		}),

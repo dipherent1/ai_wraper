@@ -3,13 +3,17 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"flyt-project-template/utils"
 
@@ -69,6 +73,54 @@ func displayAnswer(answer string) error {
 	return cmd.Run()
 }
 
+func setupSignalHandler(shared *flyt.SharedStore) {
+	// Create a channel to receive OS signals.
+	sigChan := make(chan os.Signal, 1)
+
+	// Tell the OS to notify our channel when an interrupt (Ctrl+C) or terminate signal occurs.
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start a new goroutine. This will run in the background without blocking the main chat loop.
+	go func() {
+		// This line will block until a signal is received on the channel.
+		<-sigChan
+
+		// Once the signal is caught, we start the shutdown procedure.
+		fmt.Println("\n🤖 Interrupt signal received. Saving conversation...")
+
+		// Use the existing GetHistory helper to retrieve the latest conversation data.
+		// NOTE: You must copy your 'GetHistory' function from nodes.go into main.go
+		// or move it to a shared 'utils' package to make it accessible here.
+		history := utils.GetHistory(shared)
+
+		// If there's nothing to save, just exit.
+		if len(history.Conversations) == 0 {
+			fmt.Println("No conversation to save. Exiting.")
+			os.Exit(0)
+		}
+
+		// Marshal the history struct into a nicely formatted JSON.
+		jsonData, err := json.MarshalIndent(history, "", "  ")
+		if err != nil {
+			log.Printf("Error marshalling history to JSON: %v", err)
+			os.Exit(1) // Exit with an error code
+		}
+
+		// Create a unique filename with a timestamp.
+		timestamp := time.Now().Format("2006-01-02_15-04-05")
+		fileName := fmt.Sprintf("conversation_%s.json", timestamp)
+
+		// Write the JSON data to the file.
+		err = os.WriteFile(fileName, jsonData, 0644)
+		if err != nil {
+			log.Printf("Error writing conversation to file: %v", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("✅ Conversation successfully saved to %s\n", fileName)
+		os.Exit(0) // Exit the program cleanly
+	}()
+}
 func main() {
 	err := godotenv.Load()
 	if err != nil {
@@ -93,9 +145,11 @@ func main() {
 
 	// Create shared store
 	shared := flyt.NewSharedStore()
-	var history History
+	var history utils.History
 	// Store the full History struct (not just the slice) for easier retrieval
 	shared.Set("history", history)
+	setupSignalHandler(shared)
+
 	shared.Set("context", " you are a helpful assistant. ")
 	var initialImagePaths []string
 	if *imagePathsStr != "" {

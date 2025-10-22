@@ -2,3 +2,4 @@
 ./build_files/
 ./.vscode
 **/build_files/
+conversation*.json
