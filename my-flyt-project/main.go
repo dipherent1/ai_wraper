@@ -76,7 +76,6 @@ func displayAnswer(answer string) error {
 		return fmt.Errorf("could not close temp file: %w", err)
 	}
 
-	// --- THIS IS THE ONLY LINE THAT CHANGES ---
 	// We use 'bat' with flags for a clean, non-interactive output.
 	cmd := exec.Command("bat", "--paging=never", "--style=plain", "--language=markdown", tmpFile.Name())
 	// ------------------------------------------
@@ -101,10 +100,6 @@ func setupSignalHandler(shared *flyt.SharedStore) {
 
 		// Once the signal is caught, we start the shutdown procedure.
 		fmt.Println("\n🤖 Interrupt signal received. Saving conversation...")
-
-		// Use the existing GetHistory helper to retrieve the latest conversation data.
-		// NOTE: You must copy your 'GetHistory' function from nodes.go into main.go
-		// or move it to a shared 'utils' package to make it accessible here.
 		history := utils.GetHistory(shared)
 
 		// If there's nothing to save, just exit.

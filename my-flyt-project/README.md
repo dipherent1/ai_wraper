@@ -38,18 +38,22 @@ flyt-project-template/
 
 1. Clone this template:
 ```bash
-git clone <your-repo-url>
+git clone <repo-url>
 cd flyt-project-template
 ```
 
 2. Install dependencies:
 ```bash
 go mod tidy
+sudo dnf install bat #for displaying in terminal    
+
 ```
 
 3. Set your API key:
 ```bash
 export GEMINI_API_KEY="your-api-key-here"
+export SERPAPI_API_KEY="your-api-key-here" #optional its not implemented yet or called in the project
+export SYSTEM_INSTRUCTIONS_PATH="Your path here"
 ```
 
 4. Run the example:
@@ -138,9 +142,11 @@ Prerequisites
 Clone and prepare
 
 ```bash
-git clone <your-repo-url>
+git clone <repo-url>
 cd my-flyt-project
 go mod tidy
+sudo dnf install bat #for displaying in terminal    
+
 ```
 
 Build
@@ -154,6 +160,7 @@ Run
 ```bash
 # set API key (example)
 export GEMINI_API_KEY="your-api-key-here"
+export SYSTEM_INSTRUCTIONS_PATH="Your path here"
 
 # run the binary
 ./build_files/ai-query
@@ -162,7 +169,11 @@ export GEMINI_API_KEY="your-api-key-here"
 You can also run in-place during development:
 
 ```bash
-GEMINI_API_KEY="your-api-key" go run .
+GEMINI_API_KEY="your-api-key" 
+SYSTEM_INSTRUCTIONS_PATH="Your path here"
+
+go run .
+
 ```
 
 ## Configuration
